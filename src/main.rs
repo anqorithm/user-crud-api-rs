@@ -2,21 +2,19 @@ mod config;
 mod db;
 mod error;
 mod handlers;
-mod middleware;
 mod models;
-mod services;
 
 use axum::{
     routing::{delete, get, patch, post},
     Router,
 };
-use redis::aio::ConnectionManager;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber;
 
 use crate::config::Settings;
 use crate::handlers::{auth, tasks, users};
+use crate::db::AppState;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,7 +26,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     db::init_db(&pool).await?;
 
     let redis_client = redis::Client::open(settings.redis_url.as_str())?;
-    let redis_conn = ConnectionManager::new(redis_client).await?;
+    let redis_conn = redis::aio::ConnectionManager::new(redis_client).await?;
+
+    let state = AppState {
+        pool,
+        redis: redis_conn,
+        settings: settings.clone(),
+    };
 
     let app = Router::new()
         .route("/health", get(|| async { "OK" }))
@@ -45,9 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/v1/tasks/:id", get(tasks::get_task_handler))
         .route("/api/v1/tasks/:id", patch(tasks::update_task_handler))
         .route("/api/v1/tasks/:id", delete(tasks::delete_task_handler))
-        .layer(axum::Extension(pool))
-        .layer(axum::Extension(redis_conn))
-        .layer(axum::Extension(settings.clone()))
+        .with_state(state)
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)

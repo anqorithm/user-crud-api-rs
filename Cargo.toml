@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
-tower = { version = "0.4", features = ["cors"] }
+tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -20,7 +20,6 @@ config = "0.14"
 thiserror = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tower-layers = "0.8"
 
 [dev-dependencies]
 tokio-test = "0.4"

@@ -1,8 +1,17 @@
-use sqlx::postgres::PgPoolOptions;
+use redis::aio::ConnectionManager;
 use sqlx::PgPool;
 
+use crate::config::Settings;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: PgPool,
+    pub redis: ConnectionManager,
+    pub settings: Settings,
+}
+
 pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
-    PgPoolOptions::new()
+    sqlx::postgres::PgPoolOptions::new()
         .max_connections(10)
         .connect(database_url)
         .await
