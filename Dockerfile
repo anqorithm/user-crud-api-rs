@@ -1,4 +1,4 @@
-FROM rust:1.78-slim as builder
+FROM rust:1.88-slim as builder
 
 WORKDIR /app
 RUN apt-get update && apt-get install -y pkg-config libpq-dev && rm -rf /var/lib/apt/lists/*
