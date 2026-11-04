@@ -126,9 +126,3 @@ pub struct TokenResponse {
 pub struct RefreshRequest {
     pub refresh_token: String,
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaginationParams {
-    pub page: Option<i64>,
-    pub page_size: Option<i64>,
-}

@@ -43,7 +43,7 @@ pub async fn create_user_handler(
     .bind(&user_data.name)
     .bind(&user_data.email)
     .bind(&hashed_password)
-    .bind(&user_data.age)
+    .bind(user_data.age)
     .fetch_optional(&state.pool)
     .await
     .map_err(|e| tracing::error!("DB error: {:?}", e)).ok().flatten();
@@ -92,7 +92,7 @@ pub async fn list_users_handler(
     Query(params): Query<PaginationQuery>,
 ) -> impl IntoResponse {
     let page = params.page.unwrap_or(1).max(1);
-    let page_size = params.page_size.unwrap_or(20).min(100).max(1);
+    let page_size = params.page_size.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1) * page_size;
 
     let users: Vec<User> =
@@ -110,7 +110,7 @@ pub async fn list_users_handler(
         Json(
             users
                 .into_iter()
-                .map(|user| UserResponse::from(user))
+                .map(UserResponse::from)
                 .collect::<Vec<_>>(),
         ),
     )

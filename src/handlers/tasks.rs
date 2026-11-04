@@ -83,7 +83,7 @@ pub async fn list_tasks_handler(
     Query(params): Query<PaginationQuery>,
 ) -> impl IntoResponse {
     let page = params.page.unwrap_or(1).max(1);
-    let page_size = params.page_size.unwrap_or(20).min(100).max(1);
+    let page_size = params.page_size.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1) * page_size;
 
     let tasks: Vec<Task> =
@@ -101,7 +101,7 @@ pub async fn list_tasks_handler(
         Json(
             tasks
                 .into_iter()
-                .map(|task| TaskResponse::from(task))
+                .map(TaskResponse::from)
                 .collect::<Vec<_>>(),
         ),
     )

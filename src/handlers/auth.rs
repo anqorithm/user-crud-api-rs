@@ -59,7 +59,7 @@ pub async fn register(
     .bind(&user_data.name)
     .bind(&user_data.email)
     .bind(&hashed_password)
-    .bind(&user_data.age)
+    .bind(user_data.age)
     .fetch_optional(&state.pool)
     .await
     .map_err(|e| tracing::error!("DB error: {:?}", e)).ok().flatten();
@@ -145,10 +145,7 @@ pub async fn login(
         }
     };
 
-    let valid = match bcrypt::verify(&credentials.password, &user_row.hashed_password) {
-        Ok(v) => v,
-        Err(_) => false,
-    };
+    let valid = bcrypt::verify(&credentials.password, &user_row.hashed_password).unwrap_or(false);
 
     if !valid {
         let response = (
