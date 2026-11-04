@@ -3,9 +3,6 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
-    pub app_name: String,
-    pub app_version: String,
-    pub debug: bool,
     pub database_url: String,
     pub redis_url: String,
     pub jwt_secret: String,
@@ -27,9 +24,6 @@ impl Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            app_name: "User CRUD API".into(),
-            app_version: "1.0.0".into(),
-            debug: true,
             database_url: "postgres://postgres:postgres@localhost:5432/users_db".into(),
             redis_url: "redis://localhost:6379".into(),
             jwt_secret: "your-super-secret-key-change-in-production".into(),

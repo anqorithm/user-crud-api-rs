@@ -1,8 +1,8 @@
 use axum::{
     extract::{Path, Query, State},
-    Json,
     http::StatusCode,
     response::IntoResponse,
+    Json,
 };
 use redis::AsyncCommands;
 use serde::Deserialize;
@@ -10,7 +10,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::db::AppState;
-use crate::models::{UserCreate, UserUpdate, User, UserResponse};
+use crate::models::{User, UserCreate, UserResponse, UserUpdate};
 
 #[derive(Debug, Deserialize)]
 pub struct PaginationQuery {
@@ -24,7 +24,13 @@ pub async fn create_user_handler(
 ) -> impl IntoResponse {
     let hashed_password = match bcrypt::hash(&user_data.password, bcrypt::DEFAULT_COST) {
         Ok(p) => p,
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Password hash failed"}))).into_response(),
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Password hash failed"})),
+            )
+                .into_response()
+        }
     };
 
     let user_row: Option<User> = sqlx::query_as(
@@ -37,14 +43,20 @@ pub async fn create_user_handler(
     .bind(&user_data.name)
     .bind(&user_data.email)
     .bind(&hashed_password)
-    .bind(&user_data.age)
+    .bind(user_data.age)
     .fetch_optional(&state.pool)
     .await
     .map_err(|e| tracing::error!("DB error: {:?}", e)).ok().flatten();
 
     let user_row = match user_row {
         Some(u) => u,
-        None => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to create user"}))).into_response(),
+        None => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to create user"})),
+            )
+                .into_response()
+        }
     };
 
     let mut conn = state.redis.clone();
@@ -57,17 +69,21 @@ pub async fn get_user_handler(
     State(state): State<AppState>,
     Path(user_id): Path<Uuid>,
 ) -> impl IntoResponse {
-    let user_row: Option<User> = sqlx::query_as(
-        "SELECT * FROM users WHERE id = $1",
-    )
-    .bind(user_id)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|e| tracing::error!("DB error: {:?}", e)).ok().flatten();
+    let user_row: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| tracing::error!("DB error: {:?}", e))
+        .ok()
+        .flatten();
 
     match user_row {
         Some(u) => (StatusCode::OK, Json(UserResponse::from(u))).into_response(),
-        None => (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"}))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "User not found"})),
+        )
+            .into_response(),
     }
 }
 
@@ -76,19 +92,29 @@ pub async fn list_users_handler(
     Query(params): Query<PaginationQuery>,
 ) -> impl IntoResponse {
     let page = params.page.unwrap_or(1).max(1);
-    let page_size = params.page_size.unwrap_or(20).min(100).max(1);
+    let page_size = params.page_size.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1) * page_size;
 
-    let users: Vec<User> = sqlx::query_as(
-        "SELECT * FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2",
-    )
-    .bind(page_size)
-    .bind(offset)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|e| tracing::error!("DB error: {:?}", e)).ok().unwrap_or_default();
+    let users: Vec<User> =
+        sqlx::query_as("SELECT * FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2")
+            .bind(page_size)
+            .bind(offset)
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|e| tracing::error!("DB error: {:?}", e))
+            .ok()
+            .unwrap_or_default();
 
-    (StatusCode::OK, Json(users.into_iter().map(|user| UserResponse::from(user)).collect::<Vec<_>>())).into_response()
+    (
+        StatusCode::OK,
+        Json(
+            users
+                .into_iter()
+                .map(UserResponse::from)
+                .collect::<Vec<_>>(),
+        ),
+    )
+        .into_response()
 }
 
 pub async fn update_user_handler(
@@ -96,17 +122,23 @@ pub async fn update_user_handler(
     Path(user_id): Path<Uuid>,
     Json(update_data): Json<UserUpdate>,
 ) -> impl IntoResponse {
-    let existing: Option<User> = sqlx::query_as(
-        "SELECT * FROM users WHERE id = $1",
-    )
-    .bind(user_id)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|e| tracing::error!("DB error: {:?}", e)).ok().flatten();
+    let existing: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| tracing::error!("DB error: {:?}", e))
+        .ok()
+        .flatten();
 
     let existing_user = match existing {
         Some(u) => u,
-        None => return (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"}))).into_response(),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "User not found"})),
+            )
+                .into_response()
+        }
     };
 
     let name = update_data.name.unwrap_or(existing_user.name);
@@ -137,7 +169,11 @@ pub async fn update_user_handler(
             let _: Result<(), _> = conn.del::<_, ()>("users:list:*").await;
             (StatusCode::OK, Json(UserResponse::from(u))).into_response()
         }
-        None => (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"}))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "User not found"})),
+        )
+            .into_response(),
     }
 }
 
@@ -153,7 +189,11 @@ pub async fn delete_user_handler(
     match result {
         Ok(r) => {
             if r.rows_affected() == 0 {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"}))).into_response()
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({"error": "User not found"})),
+                )
+                    .into_response()
             } else {
                 let mut conn = state.redis.clone();
                 let _: Result<(), _> = conn.del::<_, ()>(&format!("users:{}", user_id)).await;
@@ -161,6 +201,10 @@ pub async fn delete_user_handler(
                 (StatusCode::NO_CONTENT, Json(json!({}))).into_response()
             }
         }
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Database error"}))).into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Database error"})),
+        )
+            .into_response(),
     }
 }

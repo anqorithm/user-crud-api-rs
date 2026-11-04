@@ -1,8 +1,8 @@
 use axum::{
     extract::{Path, Query, State},
-    Json,
     http::StatusCode,
     response::IntoResponse,
+    Json,
 };
 use redis::AsyncCommands;
 use serde::Deserialize;
@@ -10,7 +10,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::db::AppState;
-use crate::models::{TaskCreate, TaskUpdate, Task, TaskResponse};
+use crate::models::{Task, TaskCreate, TaskResponse, TaskUpdate};
 
 #[derive(Debug, Deserialize)]
 pub struct PaginationQuery {
@@ -38,7 +38,9 @@ pub async fn create_task_handler(
     .bind(user_id)
     .fetch_optional(&state.pool)
     .await
-    .map_err(|e| tracing::error!("DB error: {:?}", e)).ok().flatten();
+    .map_err(|e| tracing::error!("DB error: {:?}", e))
+    .ok()
+    .flatten();
 
     match task_row {
         Some(t) => {
@@ -46,7 +48,11 @@ pub async fn create_task_handler(
             let _: Result<(), _> = conn.del::<_, ()>(&format!("tasks:user:{}", user_id)).await;
             (StatusCode::CREATED, Json(TaskResponse::from(t))).into_response()
         }
-        None => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to create task"}))).into_response(),
+        None => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to create task"})),
+        )
+            .into_response(),
     }
 }
 
@@ -54,17 +60,21 @@ pub async fn get_task_handler(
     State(state): State<AppState>,
     Path(task_id): Path<Uuid>,
 ) -> impl IntoResponse {
-    let task_row: Option<Task> = sqlx::query_as(
-        "SELECT * FROM tasks WHERE id = $1",
-    )
-    .bind(task_id)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|e| tracing::error!("DB error: {:?}", e)).ok().flatten();
+    let task_row: Option<Task> = sqlx::query_as("SELECT * FROM tasks WHERE id = $1")
+        .bind(task_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| tracing::error!("DB error: {:?}", e))
+        .ok()
+        .flatten();
 
     match task_row {
         Some(t) => (StatusCode::OK, Json(TaskResponse::from(t))).into_response(),
-        None => (StatusCode::NOT_FOUND, Json(json!({"error": "Task not found"}))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Task not found"})),
+        )
+            .into_response(),
     }
 }
 
@@ -73,19 +83,29 @@ pub async fn list_tasks_handler(
     Query(params): Query<PaginationQuery>,
 ) -> impl IntoResponse {
     let page = params.page.unwrap_or(1).max(1);
-    let page_size = params.page_size.unwrap_or(20).min(100).max(1);
+    let page_size = params.page_size.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1) * page_size;
 
-    let tasks: Vec<Task> = sqlx::query_as(
-        "SELECT * FROM tasks ORDER BY created_at DESC LIMIT $1 OFFSET $2",
-    )
-    .bind(page_size)
-    .bind(offset)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|e| tracing::error!("DB error: {:?}", e)).ok().unwrap_or_default();
+    let tasks: Vec<Task> =
+        sqlx::query_as("SELECT * FROM tasks ORDER BY created_at DESC LIMIT $1 OFFSET $2")
+            .bind(page_size)
+            .bind(offset)
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|e| tracing::error!("DB error: {:?}", e))
+            .ok()
+            .unwrap_or_default();
 
-    (StatusCode::OK, Json(tasks.into_iter().map(|task| TaskResponse::from(task)).collect::<Vec<_>>())).into_response()
+    (
+        StatusCode::OK,
+        Json(
+            tasks
+                .into_iter()
+                .map(TaskResponse::from)
+                .collect::<Vec<_>>(),
+        ),
+    )
+        .into_response()
 }
 
 pub async fn update_task_handler(
@@ -93,17 +113,23 @@ pub async fn update_task_handler(
     Path(task_id): Path<Uuid>,
     Json(update_data): Json<TaskUpdate>,
 ) -> impl IntoResponse {
-    let existing: Option<Task> = sqlx::query_as(
-        "SELECT * FROM tasks WHERE id = $1",
-    )
-    .bind(task_id)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|e| tracing::error!("DB error: {:?}", e)).ok().flatten();
+    let existing: Option<Task> = sqlx::query_as("SELECT * FROM tasks WHERE id = $1")
+        .bind(task_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| tracing::error!("DB error: {:?}", e))
+        .ok()
+        .flatten();
 
     let existing_task = match existing {
         Some(t) => t,
-        None => return (StatusCode::NOT_FOUND, Json(json!({"error": "Task not found"}))).into_response(),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Task not found"})),
+            )
+                .into_response()
+        }
     };
 
     let title = update_data.title.unwrap_or(existing_task.title);
@@ -133,7 +159,11 @@ pub async fn update_task_handler(
             let _: Result<(), _> = conn.del::<_, ()>(&format!("tasks:{}", task_id)).await;
             (StatusCode::OK, Json(TaskResponse::from(t))).into_response()
         }
-        None => (StatusCode::NOT_FOUND, Json(json!({"error": "Task not found"}))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Task not found"})),
+        )
+            .into_response(),
     }
 }
 
@@ -149,13 +179,21 @@ pub async fn delete_task_handler(
     match result {
         Ok(r) => {
             if r.rows_affected() == 0 {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "Task not found"}))).into_response()
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({"error": "Task not found"})),
+                )
+                    .into_response()
             } else {
                 let mut conn = state.redis.clone();
                 let _: Result<(), _> = conn.del::<_, ()>(&format!("tasks:{}", task_id)).await;
                 (StatusCode::NO_CONTENT, Json(json!({}))).into_response()
             }
         }
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Database error"}))).into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Database error"})),
+        )
+            .into_response(),
     }
 }

@@ -1,6 +1,5 @@
 mod config;
 mod db;
-mod error;
 mod handlers;
 mod models;
 
@@ -10,11 +9,10 @@ use axum::{
 };
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
-use tracing_subscriber;
 
 use crate::config::Settings;
-use crate::handlers::{auth, tasks, users};
 use crate::db::AppState;
+use crate::handlers::{auth, tasks, users};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
